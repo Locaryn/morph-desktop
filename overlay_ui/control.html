@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; user-select: none; }
+  body { display: grid; place-items: center; }
+  button {
+    all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-height: 48px; min-width: 48px;
+    padding: 0 18px 0 14px; border-radius: 999px; cursor: pointer;
+    background: rgba(179, 65, 59, .62); color: #fff; border: 1px solid rgba(255, 255, 255, .28);
+    font: 600 14px/1 "Segoe UI", system-ui, sans-serif; opacity: .62;
+    transition: opacity .15s ease, background .15s ease, transform .1s ease;
+    backdrop-filter: blur(6px);
+  }
+  button:hover { opacity: 1; background: rgba(199, 68, 60, .95); }
+  button:active { transform: scale(.94); }
+  button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  button.resume { background: rgba(62, 140, 102, .8); opacity: .9; }
+  button.resume:hover { background: rgba(62, 140, 102, 1); }
+  svg { width: 20px; height: 20px; flex: none; }
+</style>
+</head>
+<body>
+<button id="btn" type="button" title="Arrêt d'urgence (Ctrl+Alt+Échap)" aria-label="Arrêter le contrôle de l'ordinateur">
+  <svg viewBox="0 0 24 24" fill="currentColor" id="icon"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>
+  <span id="text">Stop</span>
+</button>
+<script>
+  "use strict";
+  const btn = document.getElementById("btn");
+  let mode = "stop";
+  window.__mode = (m) => {
+    mode = m;
+    btn.classList.toggle("resume", m === "resume");
+    document.getElementById("text").textContent = m === "resume" ? "Arrêté — reprendre" : "Stop";
+    document.getElementById("icon").innerHTML = m === "resume"
+      ? '<path d="M8 5v14l11-7z"/>'
+      : '<rect x="5" y="5" width="14" height="14" rx="2.5"/>';
+    btn.setAttribute("aria-label", m === "resume" ? "Autoriser de nouveau le contrôle" : "Arrêter le contrôle de l'ordinateur");
+  };
+  btn.addEventListener("click", () => window.ipc.postMessage(mode));
+</script>
+</body>
+</html>

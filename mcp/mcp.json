@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "desktop": {
+      "command": "${LOCARYN_MORPH_ROOT}/bin/locaryn-desktop-mcp.exe",
+      "args": [],
+      "env": {
+        "RUST_LOG": "warn"
+      },
+      "transport": "stdio",
+      "auto_start": true
+    }
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://locaryn.dev/schema/morph.json/v0.1",
+  "apiVersion": "0.1",
+  "name": "morph-desktop",
+  "version": "0.1.0-beta.1",
+  "description": "Pilote l'ordinateur et toutes ses applications : lit l'écran et les fenêtres (accessibilité), clique, saisit, lance des applications et des commandes. Pendant tout contrôle, un cadre animé fait le tour de l'écran, le curseur change, chaque clic émet une onde, et un bouton Stop coupe tout. Les décisions rapides passent par Laya.",
+  "author": "Locaryn Team",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Locaryn/morph-desktop",
+  "repository": "https://github.com/Locaryn/morph-desktop",
+  "keywords": [
+    "computer-use",
+    "desktop",
+    "automation",
+    "ui-automation",
+    "windows",
+    "laya"
+  ],
+  "permissions": {
+    "mcp": {
+      "reason": "Lancer le serveur de contrôle de l'ordinateur et son overlay fournis par l'extension."
+    },
+    "files.read": {
+      "reason": "Lire ses réglages."
+    },
+    "files.write": {
+      "reason": "Écrire les captures d'écran demandées."
+    },
+    "shell": {
+      "reason": "Exécuter les commandes PowerShell que l'utilisateur demande au modèle de lancer ; les commandes destructrices demandent confirmation.",
+      "requireApproval": true
+    },
+    "network": {
+      "reason": "Télécharger le modèle Laya au premier usage."
+    }
+  },
+  "components": {
+    "skills": [
+      "SKILL.md"
+    ],
+    "mcp": "mcp/mcp.json"
+  },
+  "capabilities": [
+    "computer-use"
+  ],
+  "platforms": [
+    "windows"
+  ],
+  "beta": true,
+  "stability": "untested",
+  "versions": [
+    {
+      "version": "0.1.0-beta.1",
+      "is_beta": true,
+      "summary": "Première version bêta : contrôle de l'ordinateur, overlay plein écran, Stop d'urgence, décisions par Laya",
+      "tag": "v0.1.0-beta.1",
+      "released_at": "2026-09-21",
+      "install_source": "Locaryn/morph-desktop#v0.1.0-beta.1"
+    }
+  ]
+}

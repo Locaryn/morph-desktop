@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --g1: #3e8c66; --g2: #a7d8bd; --g3: #1f4d38; --amber: #e2a54a; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; user-select: none; cursor: none; }
+  @property --a { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+  #root { position: fixed; inset: 0; opacity: 0; transition: opacity .45s ease; pointer-events: none; }
+  #root.on { opacity: 1; }
+  .border {
+    position: absolute; inset: 0; padding: 7px;
+    background: conic-gradient(from var(--a), var(--g1), var(--g2), var(--g1) 28%, var(--g3) 52%, var(--g1) 76%, var(--g2));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    animation: spin 5s linear infinite;
+  }
+  .glow { position: absolute; inset: 0; box-shadow: inset 0 0 90px 14px rgba(62, 140, 102, .38); animation: breathe 3s ease-in-out infinite; }
+  @keyframes spin { to { --a: 360deg; } }
+  @keyframes breathe { 50% { opacity: .4; } }
+  .pill {
+    position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 12px; height: 42px; padding: 0 20px;
+    background: rgba(20, 28, 24, .9); color: #eef4f0; border: 1px solid rgba(167, 216, 189, .35); border-radius: 999px;
+    font: 500 14px/1 "Segoe UI", system-ui, sans-serif; white-space: nowrap;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #6fcf9d; animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { transform: scale(1.5); opacity: .5; } }
+  .label { opacity: .7; }
+  #cursor {
+    position: absolute; left: 0; top: 0; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%;
+    border: 2px solid rgba(111, 207, 157, .9); box-shadow: 0 0 16px rgba(111, 207, 157, .55), inset 0 0 10px rgba(111, 207, 157, .25);
+    opacity: 0; transition: opacity .2s ease; will-change: transform;
+  }
+  #cursor.vis { opacity: 1; }
+  .ring { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
+    border: 3px solid var(--g2); animation: ripple .8s cubic-bezier(.2, .7, .3, 1) forwards; }
+  .ring.right { border-color: var(--amber); }
+  .ring.b { animation-delay: .13s; }
+  .ring.c { animation-delay: .26s; border-width: 2px; }
+  @keyframes ripple { from { transform: scale(.3); opacity: 1; } to { transform: scale(5.5); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .border, .glow, .dot { animation: none; } }
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="border"></div>
+  <div class="glow"></div>
+  <div class="pill"><span class="dot"></span><span>Locaryn contrôle l'ordinateur</span><span class="label" id="label"></span></div>
+  <div id="cursor"></div>
+</div>
+<script>
+  "use strict";
+  const root = document.getElementById("root");
+  const cursor = document.getElementById("cursor");
+  const label = document.getElementById("label");
+  let cursorTimer = null;
+
+  window.__active = (text) => {
+    label.textContent = text ? "· " + text : "";
+    root.classList.add("on");
+  };
+  window.__idle = () => {
+    root.classList.remove("on");
+    cursor.classList.remove("vis");
+  };
+  window.__cur = (x, y) => {
+    cursor.style.transform = `translate(${x}px, ${y}px)`;
+    cursor.classList.add("vis");
+    clearTimeout(cursorTimer);
+  };
+  window.__pulse = (x, y, kind) => {
+    ["a", "b", "c"].slice(0, kind === "double" ? 3 : 2).forEach((n) => {
+      const ring = document.createElement("div");
+      ring.className = "ring " + n + (kind === "right" ? " right" : "");
+      ring.style.left = x + "px";
+      ring.style.top = y + "px";
+      root.appendChild(ring);
+      setTimeout(() => ring.remove(), 1300);
+    });
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+name: Release Extension
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Vérifier la compilation
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.88
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --all-targets --locked
+      - name: Vérifier le manifeste et les fichiers livrés
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "JSON.parse(require('fs').readFileSync('morph.json','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('mcp/mcp.json','utf8'))"
+          test -f overlay_ui/frame.html
+          test -f overlay_ui/control.html
+
+  bundle:
+    name: Bundle windows-x86_64
+    needs: check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.88
+      - uses: Swatinem/rust-cache@v2
+      - name: Compiler le serveur MCP et l'overlay
+        run: cargo build --release --locked --bins
+      - name: Assembler le paquet
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf bundle
+          mkdir -p bundle/bin
+          cp morph.json SKILL.md README.md LICENSE bundle/
+          cp -r mcp bundle/
+          cp target/release/locaryn-desktop-mcp.exe bundle/bin/
+          cp target/release/locaryn-desktop-overlay.exe bundle/bin/
+          test -f bundle/morph.json
+          test -f bundle/mcp/mcp.json
+          test -f bundle/bin/locaryn-desktop-mcp.exe
+          test -f bundle/bin/locaryn-desktop-overlay.exe
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bundle-windows-x86_64
+          path: bundle
+          if-no-files-found: error
+
+  release:
+    name: Publier la release
+    needs: bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: dl
+          pattern: bundle-*
+      - name: Archiver
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' morph.json | head -n 1)"
+          test -n "$VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          mkdir -p out
+          for dir in dl/bundle-*; do
+            label="${dir#dl/bundle-}"
+            ( cd "$dir" && zip -r -q "$GITHUB_WORKSPACE/out/morph-desktop-v${VERSION}-${label}.zip" . )
+          done
+          ls -l out
+      - name: Vérifier les archives
+        run: |
+          set -euo pipefail
+          test "$(ls out/*.zip | wc -l)" -eq 1
+          for archive in out/*.zip; do
+            unzip -l "$archive" | grep -q "morph.json"
+            unzip -l "$archive" | grep -q "mcp/mcp.json"
+            unzip -l "$archive" | grep -q "bin/locaryn-desktop-mcp.exe"
+            unzip -l "$archive" | grep -q "bin/locaryn-desktop-overlay.exe"
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: morph-desktop-archives
+          path: out/*.zip
+          if-no-files-found: error
+      - uses: softprops/action-gh-release@v3
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          name: "morph-desktop ${{ github.ref_name }}"
+          files: out/*.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
