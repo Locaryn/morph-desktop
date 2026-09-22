@@ -9,16 +9,21 @@ Contrôle l'ordinateur et toutes les applications qui s'y trouvent : lit l'écra
 Dès qu'un outil de ce morph est utilisé — simple lecture d'écran comprise :
 
 - **Un cadre animé** fait le tour de tous les écrans, avec la mention « Locaryn contrôle l'ordinateur » et l'action en cours.
-- **Le curseur change** : la flèche devient un réticule, entouré d'un halo qui suit chaque mouvement.
+- **Le curseur disparaît** : la flèche du système s'efface, remplacée par un halo qui suit chaque mouvement — un seul indicateur, pas deux superposés.
 - **Chaque clic émet une onde** : verte pour le clic gauche, ambre pour le droit, triple pour le double-clic.
-- **Un bouton Stop**, discret et semi-transparent, entre le centre et le bas de l'écran. Raccourci : **Ctrl+Alt+Échap**.
-- L'overlay s'efface 5 s après la dernière action.
+- **Deux boutons**, discrets et semi-transparents, entre le centre et le bas de l'écran : **Pause** et **Arrêt**. Raccourci : **Ctrl+Alt+Échap** vaut Pause.
+- **Le cadre reste affiché en continu** tant que la tâche dure, même quand le modèle prend du temps entre deux actions : il ne s'éteint pas puis ne se rallume pas à chaque outil. Après quelques secondes sans action, il passe seul dans une animation plus posée avec la mention « Locaryn réfléchit » — le cadre ralentit, le halo respire plus profondément — pour dire que l'absence de manipulation est normale, pas un blocage. Il disparaît quand le modèle appelle `desktop_task_done` (la tâche est finie), sur Pause ou Arrêt, ou si le serveur s'arrête. Un filet de sécurité l'efface après 3 minutes sans la moindre action si personne n'a signalé la fin.
 
 L'overlay est **invisible pour le modèle** : il est exclu des captures d'écran (sinon le modèle verrait son propre cadre).
 
-## Arrêt d'urgence
+## Pause et Arrêt
 
-Stop (ou Ctrl+Alt+Échap) coupe le contrôle à l'instant : tous les outils refusent d'agir, le curseur est rendu au système. Le bouton devient « Arrêté — reprendre ». **Seul l'utilisateur peut reprendre** : aucun outil ne lève l'arrêt.
+Les deux coupent le contrôle à l'instant (tous les outils refusent d'agir, le curseur est rendu au système), mais avec un sens différent pour le modèle :
+
+- **Pause** (ou Ctrl+Alt+Échap) : réversible. Utile pour reprendre la main un instant sans faire perdre le fil de la tâche en cours — le bouton devient « En pause — reprendre » et la même tâche continue au clic.
+- **Arrêt** : définitif pour la tâche en cours. Utile pour couper court franchement — par exemple si le modèle n'avait pas besoin de contrôler l'ordinateur pour ce qu'on lui demandait, ou s'il se trompe. Le bouton devient « Arrêté — réactiver » ; le modèle reçoit un message différent lui disant de ne pas réessayer cette tâche et de proposer autre chose.
+
+Dans les deux cas, **seul l'utilisateur peut reprendre** (aucun outil ne lève l'un ou l'autre), et `desktop_status` indique lequel est actif (`stop_kind: "paused"` ou `"hard"`).
 
 Si l'overlay ne peut pas s'afficher, le morph **refuse d'agir** (réglage `require_overlay`). Si le serveur s'arrête brutalement, l'overlay rend de lui-même le curseur au système.
 

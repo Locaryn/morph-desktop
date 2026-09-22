@@ -14,19 +14,43 @@
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor; mask-composite: exclude;
     animation: spin 5s linear infinite;
+    transition: animation-duration .8s ease, opacity 1.2s ease;
   }
-  .glow { position: absolute; inset: 0; box-shadow: inset 0 0 90px 14px rgba(62, 140, 102, .38); animation: breathe 3s ease-in-out infinite; }
+  /* En réflexion, rien ne se manipule : le cadre ralentit et s'apaise au lieu
+     de tourner comme pendant une action, sans jamais disparaître. */
+  #root.thinking .border { animation-duration: 16s; opacity: .55; }
+  .glow {
+    position: absolute; inset: 0; box-shadow: inset 0 0 90px 14px rgba(62, 140, 102, .38);
+    animation: breathe 3s ease-in-out infinite;
+  }
+  #root.thinking .glow { animation: breathe-deep 4.2s ease-in-out infinite; }
   @keyframes spin { to { --a: 360deg; } }
   @keyframes breathe { 50% { opacity: .4; } }
+  @keyframes breathe-deep { 0%, 100% { opacity: .55; } 50% { opacity: .1; } }
   .pill {
     position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
     display: flex; align-items: center; gap: 12px; height: 42px; padding: 0 20px;
     background: rgba(20, 28, 24, .9); color: #eef4f0; border: 1px solid rgba(167, 216, 189, .35); border-radius: 999px;
     font: 500 14px/1 "Segoe UI", system-ui, sans-serif; white-space: nowrap;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, .28), 0 0 0 0 rgba(167, 216, 189, 0);
+    transition: box-shadow .8s ease;
+  }
+  #root.thinking .pill { animation: pill-glow 3.2s ease-in-out infinite; }
+  @keyframes pill-glow {
+    0%, 100% { box-shadow: 0 6px 24px rgba(0, 0, 0, .28), 0 0 0 0 rgba(167, 216, 189, 0); }
+    50% { box-shadow: 0 6px 24px rgba(0, 0, 0, .28), 0 0 20px 5px rgba(167, 216, 189, .3); }
   }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: #6fcf9d; animation: pulse 1.4s ease-in-out infinite; }
+  #root.thinking .dot { animation: pulse-slow 2.4s ease-in-out infinite; }
   @keyframes pulse { 50% { transform: scale(1.5); opacity: .5; } }
+  @keyframes pulse-slow { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.7); opacity: .4; } }
   .label { opacity: .7; }
+  .thinking-dots { display: none; gap: 3px; margin-left: 1px; }
+  #root.thinking .thinking-dots { display: inline-flex; }
+  .thinking-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .3; animation: dot-bounce 1.2s ease-in-out infinite; }
+  .thinking-dots i:nth-child(2) { animation-delay: .2s; }
+  .thinking-dots i:nth-child(3) { animation-delay: .4s; }
+  @keyframes dot-bounce { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
   #cursor {
     position: absolute; left: 0; top: 0; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%;
     border: 2px solid rgba(111, 207, 157, .9); box-shadow: 0 0 16px rgba(111, 207, 157, .55), inset 0 0 10px rgba(111, 207, 157, .25);
@@ -39,30 +63,48 @@
   .ring.b { animation-delay: .13s; }
   .ring.c { animation-delay: .26s; border-width: 2px; }
   @keyframes ripple { from { transform: scale(.3); opacity: 1; } to { transform: scale(5.5); opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .border, .glow, .dot { animation: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .border, .glow, .dot, .pill { animation: none; }
+    #root.thinking .border { opacity: .55; }
+  }
 </style>
 </head>
 <body>
 <div id="root">
   <div class="border"></div>
   <div class="glow"></div>
-  <div class="pill"><span class="dot"></span><span>Locaryn contrôle l'ordinateur</span><span class="label" id="label"></span></div>
+  <div class="pill">
+    <span class="dot"></span>
+    <span id="main">Locaryn contrôle l'ordinateur</span>
+    <span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="label" id="label"></span>
+  </div>
   <div id="cursor"></div>
 </div>
 <script>
   "use strict";
   const root = document.getElementById("root");
   const cursor = document.getElementById("cursor");
+  const main = document.getElementById("main");
   const label = document.getElementById("label");
   let cursorTimer = null;
 
   window.__active = (text) => {
+    root.classList.remove("thinking");
+    main.textContent = "Locaryn contrôle l'ordinateur";
     label.textContent = text ? "· " + text : "";
     root.classList.add("on");
   };
   window.__idle = () => {
-    root.classList.remove("on");
+    root.classList.remove("on", "thinking");
     cursor.classList.remove("vis");
+  };
+  // Rien ne se manipule depuis un moment, mais la tâche continue : le dire
+  // plutôt que de laisser l'utilisateur croire à un blocage.
+  window.__thinking = () => {
+    root.classList.add("thinking");
+    main.textContent = "Locaryn réfléchit";
+    label.textContent = "";
   };
   window.__cur = (x, y) => {
     cursor.style.transform = `translate(${x}px, ${y}px)`;
@@ -70,6 +112,7 @@
     clearTimeout(cursorTimer);
   };
   window.__pulse = (x, y, kind) => {
+    root.classList.remove("thinking"); // une onde de clic est une vraie action
     ["a", "b", "c"].slice(0, kind === "double" ? 3 : 2).forEach((n) => {
       const ring = document.createElement("div");
       ring.className = "ring " + n + (kind === "right" ? " right" : "");

@@ -2,8 +2,8 @@
   "$schema": "https://locaryn.dev/schema/morph.json/v0.1",
   "apiVersion": "0.1",
   "name": "morph-desktop",
-  "version": "0.1.0-beta.1",
-  "description": "Pilote l'ordinateur et toutes ses applications : lit l'écran et les fenêtres (accessibilité), clique, saisit, lance des applications et des commandes. Pendant tout contrôle, un cadre animé fait le tour de l'écran, le curseur change, chaque clic émet une onde, et un bouton Stop coupe tout. Les décisions rapides passent par Laya.",
+  "version": "0.1.0-beta.2",
+  "description": "Pilote l'ordinateur et toutes ses applications : lit l'écran et les fenêtres (accessibilité), clique, saisit, lance des applications et des commandes. Pendant tout contrôle, un cadre animé fait le tour de l'écran, le curseur disparaît au profit d'un halo, chaque clic émet une onde, et deux boutons (Pause, Arrêt) coupent le contrôle. Les décisions rapides passent par Laya.",
   "author": "Locaryn Team",
   "license": "Apache-2.0",
   "homepage": "https://github.com/Locaryn/morph-desktop",
@@ -49,6 +49,14 @@
   "beta": true,
   "stability": "untested",
   "versions": [
+    {
+      "version": "0.1.0-beta.2",
+      "is_beta": true,
+      "summary": "L'overlay reste affiché en continu pendant toute la tâche (fini le clignotement) et passe seul en « réflexion » après quelques secondes sans action ; bouton Stop remplacé par Pause et Arrêt, avec des messages différents pour le modèle ; le curseur disparaît au profit du seul halo dessiné ; retente une activation refusée par la calculatrice moderne de Windows",
+      "tag": "v0.1.0-beta.2",
+      "released_at": "2026-09-22",
+      "install_source": "Locaryn/morph-desktop#v0.1.0-beta.2"
+    },
     {
       "version": "0.1.0-beta.1",
       "is_beta": true,

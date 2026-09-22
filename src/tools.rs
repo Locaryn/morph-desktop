@@ -28,8 +28,14 @@ use tokio::sync::Mutex;
 const SHORTLIST: usize = 40;
 const SEUIL_CONFIANCE: f32 = 0.6;
 const CAPTURE_LARGEUR: u32 = 1568;
-const STOPPED: &str = "L'utilisateur a pressé Stop : le contrôle de l'ordinateur est suspendu. \
-Ne cherchez pas à le contourner ; dites-lui que vous attendez qu'il l'autorise de nouveau (bouton « reprendre » à l'écran).";
+/// Pause (bouton Pause, ou Ctrl+Alt+Échap) : réversible, la tâche reprendra.
+const PAUSED: &str = "L'utilisateur a mis le contrôle de l'ordinateur en pause (bouton « Pause », ou Ctrl+Alt+Échap). \
+Ce n'est pas un arrêt définitif : ne cherchez pas à le contourner, attendez qu'il clique sur « Reprendre » pour continuer la même tâche.";
+
+/// Arrêt (bouton Arrêt) : l'utilisateur ne veut plus que cette tâche continue.
+const HARD_STOPPED: &str = "L'utilisateur a arrêté complètement le contrôle de l'ordinateur (bouton « Arrêt »), pas seulement mis en pause. \
+Ne réessayez pas et ne cherchez pas à reprendre cette tâche : proposez-lui une autre façon de faire, ou attendez de nouvelles instructions. \
+Le contrôle ne reviendra que si l'utilisateur le réactive lui-même.";
 
 /// Raccourcis qui ferment, déconnectent ou effacent.
 const TOUCHES_A_RISQUE: &[&str] = &[
@@ -104,8 +110,19 @@ impl Desktop {
         if name == "desktop_status" {
             return self.status().await;
         }
+        if name == "desktop_task_done" {
+            // Un nettoyage, pas une nouvelle action : on ne le bloque pas
+            // derrière un arrêt d'urgence, et il ne rouvre jamais l'overlay.
+            self.overlay.finish().await;
+            return Ok(json!({ "done": true }));
+        }
         if self.overlay.is_stopped() {
-            return Err(STOPPED.into());
+            let msg = if self.overlay.is_hard_stopped() {
+                HARD_STOPPED
+            } else {
+                PAUSED
+            };
+            return Err(msg.into());
         }
         self.warm_up();
         self.begin(name).await?;
@@ -170,9 +187,11 @@ impl Desktop {
     // ── État et écran ───────────────────────────────────────────────────────
 
     async fn status(&self) -> Result<Value, String> {
+        let stopped = self.overlay.is_stopped();
         Ok(json!({
-            "stopped_by_user": self.overlay.is_stopped(),
-            "emergency_stop": "bouton Stop à l'écran, ou Ctrl+Alt+Échap",
+            "stopped_by_user": stopped,
+            "stop_kind": stopped.then(|| if self.overlay.is_hard_stopped() { "hard" } else { "paused" }),
+            "controls": "Pause et Arrêt à l'écran ; Ctrl+Alt+Échap vaut Pause",
             "resume": "seul l'utilisateur peut reprendre (bouton sur l'overlay)",
             "laya": {
                 "loaded": self.laya.is_running().await,
@@ -682,6 +701,7 @@ fn xy_props() -> Value {
 fn screen_tools() -> Vec<Value> {
     vec![
         tool("desktop_status", "État du contrôle de l'ordinateur : arrêt d'urgence pressé ou non, Laya, réglages. À appeler si un outil répond que l'utilisateur a pressé Stop.", json!({}), &[]),
+        tool("desktop_task_done", "Signale que la tâche de contrôle de l'ordinateur est terminée : l'overlay (cadre, curseur) disparaît de l'écran tout de suite. L'overlay reste sinon affiché sans interruption tant que d'autres outils desktop_* sont utilisés, même avec un temps de réflexion entre deux appels — à appeler dès que vous avez fini, pas après chaque action.", json!({}), &[]),
         tool("desktop_screen_info", "Écrans (position, taille, échelle), position du curseur et fenêtre au premier plan.", json!({}), &[]),
         tool("desktop_screenshot", "Capture un écran ou une zone dans un fichier PNG. Rend le chemin et l'échelle pour convertir un pixel de l'image en coordonnée écran.", json!({ "monitor": { "type": "integer" }, "region": { "type": "object", "properties": { "x": {"type": "integer"}, "y": {"type": "integer"}, "width": {"type": "integer"}, "height": {"type": "integer"} } }, "max_width": { "type": "integer" } }), &[]),
         tool("desktop_list_windows", "Liste les fenêtres ouvertes (titre, application, position). `query` filtre.", json!({ "query": str_prop("Filtre sur le titre ou l'application") }), &[]),
@@ -739,8 +759,8 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         for t in tools_list()["tools"].as_array().unwrap() {
             let n = t["name"].as_str().unwrap();
-            if n == "desktop_status" {
-                continue;
+            if n == "desktop_status" || n == "desktop_task_done" {
+                continue; // gérés dans `call`, avant `dispatch`
             }
             // Un outil inconnu répond « inconnu » ; un outil routé répond autre chose.
             let r = rt.block_on(d.dispatch(n, json!({})));

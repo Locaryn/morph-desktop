@@ -13,8 +13,15 @@ use tokio::process::{Child, ChildStdin, Command as Proc};
 use tokio::sync::{oneshot, Mutex};
 use tokio::time::timeout;
 
-/// Sans nouvelle action pendant ce délai, l'overlay s'efface.
-const IDLE_AFTER: Duration = Duration::from_secs(5);
+/// Sans nouvelle action après ce délai — mais la tâche non finie — l'overlay
+/// passe en « réflexion » : présence continue, animation plus posée, pour dire
+/// à l'utilisateur que l'absence de manipulation est normale.
+const THINK_AFTER: Duration = Duration::from_secs(8);
+/// Filet de sécurité si le modèle oublie de signaler la fin de sa tâche
+/// (`desktop_task_done`) : l'overlay ne doit pas rester affiché indéfiniment.
+/// Volontairement large — un simple temps de réflexion entre deux outils ne
+/// doit jamais faire disparaître puis réapparaître le cadre.
+const SAFETY_IDLE: Duration = Duration::from_secs(180);
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
 
 struct Live {
@@ -25,6 +32,9 @@ struct Live {
 pub struct OverlayHost {
     live: Mutex<Option<Live>>,
     stopped: Arc<AtomicBool>,
+    /// `true` si le dernier arrêt est un Arrêt complet (bouton Arrêt), pas
+    /// une simple Pause : change le message renvoyé au modèle.
+    hard: Arc<AtomicBool>,
     generation: AtomicU64,
 }
 
@@ -33,32 +43,61 @@ impl OverlayHost {
         Arc::new(Self {
             live: Mutex::new(None),
             stopped: Arc::new(AtomicBool::new(false)),
+            hard: Arc::new(AtomicBool::new(false)),
             generation: AtomicU64::new(0),
         })
     }
 
-    /// L'utilisateur a-t-il coupé le contrôle ?
+    /// L'utilisateur a-t-il coupé le contrôle (pause ou arrêt complet) ?
     pub fn is_stopped(&self) -> bool {
         self.stopped.load(Ordering::Relaxed)
     }
 
-    /// Montre l'overlay avec l'action en cours et programme son effacement.
+    /// Le dernier arrêt est-il un Arrêt complet plutôt qu'une Pause ?
+    pub fn is_hard_stopped(&self) -> bool {
+        self.hard.load(Ordering::Relaxed)
+    }
+
+    /// Montre l'overlay avec l'action en cours. Il reste affiché — pas de
+    /// délai court entre deux outils — jusqu'à `finish()`, un arrêt d'urgence,
+    /// ou le filet de sécurité si personne ne signale la fin de la tâche.
+    /// Passe seul en « réflexion » si rien ne se manipule pendant un moment.
     pub async fn active(self: &Arc<Self>, label: &str) -> Result<(), String> {
         self.send(&Command::Active {
             label: label.into(),
         })
         .await?;
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        self.schedule_if_idle(generation, THINK_AFTER, Command::Thinking);
+        self.schedule_if_idle(generation, SAFETY_IDLE, Command::Idle);
+        Ok(())
+    }
+
+    /// Envoie `cmd` après `delay`, mais seulement si aucune action plus
+    /// récente n'a eu lieu entretemps (même génération).
+    fn schedule_if_idle(self: &Arc<Self>, generation: u64, delay: Duration, cmd: Command) {
         let host = self.clone();
         tokio::spawn(async move {
-            tokio::time::sleep(IDLE_AFTER).await;
+            tokio::time::sleep(delay).await;
             if host.generation.load(Ordering::SeqCst) == generation {
-                if let Err(e) = host.send(&Command::Idle).await {
-                    eprintln!("overlay : effacement impossible : {e}");
+                if let Err(e) = host.send(&cmd).await {
+                    eprintln!("overlay : {cmd:?} impossible : {e}");
                 }
             }
         });
-        Ok(())
+    }
+
+    /// La tâche est terminée : l'overlay disparaît tout de suite, sans
+    /// attendre le filet de sécurité. Ne relance pas l'overlay s'il n'a
+    /// jamais démarré ou est déjà éteint.
+    pub async fn finish(&self) {
+        self.generation.fetch_add(1, Ordering::SeqCst); // annule le filet de sécurité en attente
+        if self.live.lock().await.is_none() {
+            return;
+        }
+        if let Err(e) = self.send(&Command::Idle).await {
+            eprintln!("overlay : effacement impossible : {e}");
+        }
     }
 
     pub async fn pulse(&self, kind: PulseKind, x: i32, y: i32) {
@@ -106,6 +145,7 @@ impl OverlayHost {
         tokio::spawn(read_events(
             BufReader::new(stdout),
             self.stopped.clone(),
+            self.hard.clone(),
             ready_tx,
         ));
         timeout(READY_TIMEOUT, ready_rx)
@@ -114,8 +154,13 @@ impl OverlayHost {
             .map_err(|_| "L'overlay s'est arrêté au démarrage (WebView2 installé ?)".to_string())?;
         let mut live = Live { child, stdin };
         if self.is_stopped() {
-            // Un overlay relancé après un arrêt doit encore proposer de reprendre.
-            let halt = serde_json::to_string(&Command::Halt).map_err(|e| e.to_string())? + "\n";
+            // Un overlay relancé après un arrêt doit encore proposer de reprendre,
+            // dans le même mode (pause ou arrêt complet) qu'avant sa disparition.
+            let halt = serde_json::to_string(&Command::Halt {
+                hard: self.is_hard_stopped(),
+            })
+            .map_err(|e| e.to_string())?
+                + "\n";
             live.stdin
                 .write_all(halt.as_bytes())
                 .await
@@ -136,6 +181,7 @@ impl Drop for Live {
 async fn read_events(
     mut lines: BufReader<tokio::process::ChildStdout>,
     stopped: Arc<AtomicBool>,
+    hard: Arc<AtomicBool>,
     ready: oneshot::Sender<()>,
 ) {
     let mut ready = Some(ready);
@@ -154,8 +200,14 @@ async fn read_events(
                     }
                 }
             }
-            Ok(Event::Stop) => stopped.store(true, Ordering::SeqCst),
-            Ok(Event::Resume) => stopped.store(false, Ordering::SeqCst),
+            Ok(Event::Stop { hard: h }) => {
+                stopped.store(true, Ordering::SeqCst);
+                hard.store(h, Ordering::SeqCst);
+            }
+            Ok(Event::Resume) => {
+                stopped.store(false, Ordering::SeqCst);
+                hard.store(false, Ordering::SeqCst);
+            }
             Err(e) => eprintln!("overlay : événement illisible : {e}"),
         }
     }

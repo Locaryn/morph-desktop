@@ -5,41 +5,62 @@
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; user-select: none; }
   body { display: grid; place-items: center; }
+  #row { display: flex; gap: 10px; }
   button {
-    all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-height: 48px; min-width: 48px;
-    padding: 0 18px 0 14px; border-radius: 999px; cursor: pointer;
-    background: rgba(179, 65, 59, .62); color: #fff; border: 1px solid rgba(255, 255, 255, .28);
-    font: 600 14px/1 "Segoe UI", system-ui, sans-serif; opacity: .62;
+    all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 8px; min-height: 48px; min-width: 48px;
+    padding: 0 16px 0 12px; border-radius: 999px; cursor: pointer; color: #fff; border: 1px solid rgba(255, 255, 255, .28);
+    font: 600 13px/1 "Segoe UI", system-ui, sans-serif; opacity: .6;
     transition: opacity .15s ease, background .15s ease, transform .1s ease;
     backdrop-filter: blur(6px);
   }
-  button:hover { opacity: 1; background: rgba(199, 68, 60, .95); }
+  button:hover { opacity: 1; }
   button:active { transform: scale(.94); }
   button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-  button.resume { background: rgba(62, 140, 102, .8); opacity: .9; }
-  button.resume:hover { background: rgba(62, 140, 102, 1); }
-  svg { width: 20px; height: 20px; flex: none; }
+  svg { width: 18px; height: 18px; flex: none; }
+  /* Pause : réversible, ton neutre — reprendre ne coûte qu'un clic. */
+  #pause { background: rgba(58, 90, 112, .62); }
+  #pause:hover { background: rgba(68, 104, 130, .95); }
+  /* Arrêt : définitif pour la tâche en cours, ton d'alerte comme l'ancien bouton unique. */
+  #kill { background: rgba(179, 65, 59, .62); }
+  #kill:hover { background: rgba(199, 68, 60, .95); }
+  #resume { background: rgba(62, 140, 102, .85); opacity: .92; }
+  #resume:hover { background: rgba(62, 140, 102, 1); }
+  #resume span { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-<button id="btn" type="button" title="Arrêt d'urgence (Ctrl+Alt+Échap)" aria-label="Arrêter le contrôle de l'ordinateur">
-  <svg viewBox="0 0 24 24" fill="currentColor" id="icon"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>
-  <span id="text">Stop</span>
+<div id="row">
+  <button id="pause" type="button" title="Mettre en pause (Ctrl+Alt+Échap) — un clic pour reprendre la même tâche" aria-label="Mettre en pause le contrôle de l'ordinateur">
+    <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+    <span>Pause</span>
+  </button>
+  <button id="kill" type="button" title="Arrêter complètement : la tâche s'arrête, pas de reprise automatique" aria-label="Arrêter complètement le contrôle de l'ordinateur">
+    <svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>
+    <span>Arrêt</span>
+  </button>
+</div>
+<button id="resume" type="button" hidden>
+  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+  <span id="resume-text">Reprendre</span>
 </button>
 <script>
   "use strict";
-  const btn = document.getElementById("btn");
-  let mode = "stop";
-  window.__mode = (m) => {
-    mode = m;
-    btn.classList.toggle("resume", m === "resume");
-    document.getElementById("text").textContent = m === "resume" ? "Arrêté — reprendre" : "Stop";
-    document.getElementById("icon").innerHTML = m === "resume"
-      ? '<path d="M8 5v14l11-7z"/>'
-      : '<rect x="5" y="5" width="14" height="14" rx="2.5"/>';
-    btn.setAttribute("aria-label", m === "resume" ? "Autoriser de nouveau le contrôle" : "Arrêter le contrôle de l'ordinateur");
+  const row = document.getElementById("row");
+  const resume = document.getElementById("resume");
+  const resumeText = document.getElementById("resume-text");
+
+  document.getElementById("pause").addEventListener("click", () => window.ipc.postMessage("pause"));
+  document.getElementById("kill").addEventListener("click", () => window.ipc.postMessage("kill"));
+  resume.addEventListener("click", () => window.ipc.postMessage("resume"));
+
+  // mode : "active" (Pause/Arrêt visibles), "soft" (en pause), "hard" (arrêté).
+  window.__mode = (mode) => {
+    row.hidden = mode !== "active";
+    resume.hidden = mode === "active";
+    if (mode === "soft") { resumeText.textContent = "En pause — reprendre"; resume.title = "Reprendre la même tâche"; }
+    if (mode === "hard") { resumeText.textContent = "Arrêté — réactiver"; resume.title = "Réactiver le contrôle de l'ordinateur"; }
   };
-  btn.addEventListener("click", () => window.ipc.postMessage(mode));
 </script>
 </body>
 </html>

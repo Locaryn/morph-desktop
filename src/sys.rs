@@ -10,9 +10,9 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VK_CONTROL, VK_ESCAPE, VK_MENU,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CopyIcon, GetCursorPos, GetWindowLongPtrW, LoadCursorW, SetSystemCursor,
-    SetWindowDisplayAffinity, SetWindowLongPtrW, SystemParametersInfoW, GWL_EXSTYLE, IDC_CROSS,
-    OCR_NORMAL, SPI_SETCURSORS, WDA_EXCLUDEFROMCAPTURE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    CreateCursor, GetCursorPos, GetWindowLongPtrW, SetSystemCursor, SetWindowDisplayAffinity,
+    SetWindowLongPtrW, SystemParametersInfoW, GWL_EXSTYLE, OCR_NORMAL, SPI_SETCURSORS,
+    WDA_EXCLUDEFROMCAPTURE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
 /// Coordonnées en pixels physiques : sans cela, un écran mis à l'échelle
@@ -45,19 +45,30 @@ pub fn emergency_hotkey_down() -> bool {
     down(VK_CONTROL) && down(VK_MENU) && down(VK_ESCAPE)
 }
 
-/// Remplace la flèche du système par un réticule : le curseur « change » tant
-/// que l'ordinateur est piloté. `restore_cursors` le rend.
-pub fn use_crosshair_cursor() {
-    // SAFETY: le curseur chargé est copié, car SetSystemCursor consomme le sien.
+/// Efface la flèche du système : le curseur « change » (il disparaît) tant que
+/// l'ordinateur est piloté, et c'est le halo dessiné par l'overlay qui le
+/// remplace. Un réticule système (IDC_CROSS) a été essayé d'abord : sa croix
+/// se superposait au halo et faisait un double curseur confus. `restore_cursors`
+/// rend la flèche.
+pub fn hide_system_cursor() {
+    const SIDE: i32 = 32;
+    const BYTES: usize = (SIDE * SIDE / 8) as usize;
+    let and_mask = [0xFFu8; BYTES]; // transparent partout
+    let xor_mask = [0x00u8; BYTES];
+    // SAFETY: masques de la taille annoncée (32×32 monochrome), vivants pour l'appel ;
+    // le curseur produit est copié en interne par CreateCursor.
     unsafe {
-        let stock = LoadCursorW(null_mut(), IDC_CROSS);
-        if stock.is_null() {
-            eprintln!("curseur : réticule introuvable");
-            return;
-        }
-        let copy = CopyIcon(stock);
-        if copy.is_null() || SetSystemCursor(copy, OCR_NORMAL) == 0 {
-            eprintln!("curseur : remplacement refusé");
+        let invisible = CreateCursor(
+            null_mut(),
+            0,
+            0,
+            SIDE,
+            SIDE,
+            and_mask.as_ptr().cast(),
+            xor_mask.as_ptr().cast(),
+        );
+        if invisible.is_null() || SetSystemCursor(invisible, OCR_NORMAL) == 0 {
+            eprintln!("curseur : masquage refusé");
         }
     }
 }

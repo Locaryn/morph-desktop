@@ -22,7 +22,7 @@ use wry::{WebView, WebViewBuilder};
 
 const FRAME_HTML: &str = include_str!("../../overlay_ui/frame.html");
 const CONTROL_HTML: &str = include_str!("../../overlay_ui/control.html");
-const CONTROL_SIZE: (f64, f64) = (230.0, 84.0);
+const CONTROL_SIZE: (f64, f64) = (300.0, 84.0); // deux boutons côte à côte en mode actif
 /// Le bouton se place entre le centre et le bas de l'écran.
 const CONTROL_HEIGHT_RATIO: f64 = 0.74;
 const FADE_OUT: Duration = Duration::from_millis(550);
@@ -30,7 +30,9 @@ const FADE_OUT: Duration = Duration::from_millis(550);
 enum Msg {
     Cmd(Command),
     Cursor(i32, i32),
-    Stop,
+    /// `true` = arrêt complet (bouton Arrêt) ; `false` = pause (bouton Pause,
+    /// ou Ctrl+Alt+Échap).
+    Halt(bool),
     Resume,
     HideIfIdle,
     Quit,
@@ -162,7 +164,8 @@ fn build_control(
         .with_html(CONTROL_HTML)
         .with_ipc_handler(move |req| {
             let msg = match req.body().as_str() {
-                "stop" => Msg::Stop,
+                "pause" => Msg::Halt(false),
+                "kill" => Msg::Halt(true),
                 "resume" => Msg::Resume,
                 _ => return,
             };
@@ -209,7 +212,7 @@ fn spawn_cursor_poller(proxy: EventLoopProxy<Msg>, active: Arc<AtomicBool>) {
             std::thread::sleep(Duration::from_millis(16));
             let now = sys::cursor_pos();
             let sent = if sys::emergency_hotkey_down() {
-                proxy.send_event(Msg::Stop)
+                proxy.send_event(Msg::Halt(false))
             } else if now != last {
                 last = now;
                 proxy.send_event(Msg::Cursor(now.0, now.1))
@@ -241,11 +244,15 @@ fn run(
                 show(&screens, &control, &label, &active);
             }
             Msg::Cmd(Command::Active { .. }) => {}
-            Msg::Cmd(Command::Halt) => {
+            Msg::Cmd(Command::Halt { hard }) => {
                 stopped = true;
-                halt(&screens, &control, &active);
+                halt(&screens, &control, &active, hard);
             }
             Msg::Cmd(Command::Idle) => fade_out(&screens, &active, &proxy, stopped),
+            Msg::Cmd(Command::Thinking) if !stopped && active.load(Ordering::Relaxed) => {
+                think(&screens);
+            }
+            Msg::Cmd(Command::Thinking) => {}
             Msg::Cmd(Command::Pulse { kind, x, y }) => pulse(&screens, kind, x, y),
             Msg::Cursor(x, y) => move_cursor(&screens, x, y),
             Msg::HideIfIdle => {
@@ -253,14 +260,14 @@ fn run(
                     hide(&screens, &control, stopped);
                 }
             }
-            Msg::Stop if !stopped && active.load(Ordering::Relaxed) => {
+            Msg::Halt(hard) if !stopped && active.load(Ordering::Relaxed) => {
                 stopped = true;
-                emergency_stop(&screens, &control, &active);
+                emergency_stop(&screens, &control, &active, hard);
             }
-            Msg::Stop => {}
+            Msg::Halt(_) => {}
             Msg::Resume => {
                 stopped = false;
-                run_js(&control.view, "window.__mode('stop')");
+                run_js(&control.view, "window.__mode('active')");
                 control.window.set_visible(false);
                 emit(&Out::Resume);
             }
@@ -284,13 +291,20 @@ fn js_str(s: &str) -> String {
 
 fn show(screens: &[Screen], control: &Control, label: &str, active: &AtomicBool) {
     if !active.swap(true, Ordering::Relaxed) {
-        sys::use_crosshair_cursor();
+        sys::hide_system_cursor();
     }
     for s in screens {
         s.window.set_visible(true);
         run_js(&s.view, &format!("window.__active({})", js_str(label)));
     }
+    run_js(&control.view, "window.__mode('active')");
     control.window.set_visible(true);
+}
+
+fn think(screens: &[Screen]) {
+    for s in screens {
+        run_js(&s.view, "window.__thinking()");
+    }
 }
 
 fn fade_out(screens: &[Screen], active: &AtomicBool, proxy: &EventLoopProxy<Msg>, stopped: bool) {
@@ -319,19 +333,22 @@ fn hide(screens: &[Screen], control: &Control, stopped: bool) {
     }
 }
 
-fn emergency_stop(screens: &[Screen], control: &Control, active: &AtomicBool) {
-    halt(screens, control, active);
-    emit(&Out::Stop);
+fn emergency_stop(screens: &[Screen], control: &Control, active: &AtomicBool, hard: bool) {
+    halt(screens, control, active, hard);
+    emit(&Out::Stop { hard });
 }
 
-fn halt(screens: &[Screen], control: &Control, active: &AtomicBool) {
+fn halt(screens: &[Screen], control: &Control, active: &AtomicBool, hard: bool) {
     active.store(false, Ordering::Relaxed);
     sys::restore_cursors();
     for s in screens {
         run_js(&s.view, "window.__idle()");
         s.window.set_visible(false);
     }
-    run_js(&control.view, "window.__mode('resume')");
+    run_js(
+        &control.view,
+        &format!("window.__mode('{}')", if hard { "hard" } else { "soft" }),
+    );
     control.window.set_visible(true);
 }
 

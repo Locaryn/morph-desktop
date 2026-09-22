@@ -157,9 +157,23 @@ fn invoke(cache: &HashMap<u32, UIElement>, id: u32) -> Result<(), String> {
         .map_err(|_| {
             format!("L'élément {id} ne s'active pas par accessibilité : utilisez desktop_click")
         })?;
-    pattern
-        .invoke()
-        .map_err(|e| format!("Activation refusée : {e}"))
+    // Éprouvé sur la calculatrice de Windows (WinUI3) : `invoke` échoue parfois
+    // juste après qu'un autre élément a changé d'état, le temps que son pair
+    // d'accessibilité se rattache. Un mot n'y change rien, une courte attente si.
+    match pattern.invoke() {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            pattern.invoke().map_err(|e| {
+                format!(
+                    "Windows a refusé d'activer cet élément, même après une nouvelle tentative \
+                     ({e}) : l'application n'a peut-être pas fini de répondre. Ce n'est pas un \
+                     défaut de confirmation, inutile de renvoyer `confirmed`. Réessayez dans un \
+                     instant, ou utilisez desktop_click sur ses coordonnées."
+                )
+            })
+        }
+    }
 }
 
 fn set_value(cache: &HashMap<u32, UIElement>, id: u32, text: &str) -> Result<(), String> {

@@ -12,7 +12,12 @@ pub enum Command {
     /// Tout masquer.
     Idle,
     /// Reprendre l'état « arrêté » : le bouton propose de reprendre.
-    Halt,
+    /// `hard` distingue une pause (reprise attendue) d'un arrêt complet
+    /// (l'utilisateur ne veut plus que le modèle continue cette tâche).
+    Halt { hard: bool },
+    /// Aucune manipulation depuis un moment, mais la tâche continue : passer
+    /// à une animation plus posée pour dire que c'est normal.
+    Thinking,
     /// Une onde de clic aux coordonnées écran (pixels physiques).
     Pulse { kind: PulseKind, x: i32, y: i32 },
 }
@@ -31,8 +36,8 @@ pub enum PulseKind {
 pub enum Event {
     /// L'overlay est affiché et prêt.
     Ready,
-    /// L'utilisateur a pressé Stop (ou Ctrl+Alt+Échap).
-    Stop,
+    /// L'utilisateur a pressé Pause ou Arrêt (ou Ctrl+Alt+Échap, qui vaut Pause).
+    Stop { hard: bool },
     /// L'utilisateur a autorisé de nouveau le contrôle.
     Resume,
 }
@@ -56,8 +61,8 @@ mod tests {
     #[test]
     fn un_evenement_se_lit() {
         assert_eq!(
-            serde_json::from_str::<Event>(r#"{"event":"stop"}"#).unwrap(),
-            Event::Stop
+            serde_json::from_str::<Event>(r#"{"event":"stop","hard":true}"#).unwrap(),
+            Event::Stop { hard: true }
         );
     }
 }
