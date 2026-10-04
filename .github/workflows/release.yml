@@ -95,10 +95,14 @@ jobs:
             unzip -l "$archive" | grep -q "bin/locaryn-desktop-mcp.exe"
             unzip -l "$archive" | grep -q "bin/locaryn-desktop-overlay.exe"
           done
+      - name: Empreintes SHA-256
+        run: |
+          set -euo pipefail
+          ( cd out && sha256sum *.zip | tee SHA256SUMS.txt )
       - uses: actions/upload-artifact@v7
         with:
           name: morph-desktop-archives
-          path: out/*.zip
+          path: out/*
           if-no-files-found: error
       - uses: softprops/action-gh-release@v3
         if: startsWith(github.ref, 'refs/tags/')
@@ -106,6 +110,6 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           name: "morph-desktop ${{ github.ref_name }}"
-          files: out/*.zip
+          files: out/*
           generate_release_notes: true
           fail_on_unmatched_files: true

@@ -4,6 +4,8 @@ Contrôle l'ordinateur et toutes les applications qui s'y trouvent : lit l'écra
 
 **Windows 10 (2004) et 11.** Il faut WebView2 (présent sur Windows 11) pour l'overlay.
 
+> **Autres outils d'IA** (Claude Desktop, Claude Code, Antigravity…) : ce morph est un serveur MCP autonome. Installation sûre et réglages recommandés : [docs/INSTALL-AUTRES-OUTILS-IA.md](docs/INSTALL-AUTRES-OUTILS-IA.md).
+
 ## Ce que voit l'utilisateur
 
 Dès qu'un outil de ce morph est utilisé — simple lecture d'écran comprise :
