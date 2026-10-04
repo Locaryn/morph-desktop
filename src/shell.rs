@@ -54,6 +54,9 @@ pub async fn run(command: &str, cwd: Option<&str>, timeout: Duration) -> Result<
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .kill_on_drop(true);
+    // Sa sortie est lue par le serveur, pas montrée : pas de fenêtre de console.
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
