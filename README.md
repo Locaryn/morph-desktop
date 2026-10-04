@@ -4,7 +4,14 @@ Contrôle l'ordinateur et toutes les applications qui s'y trouvent : lit l'écra
 
 **Windows 10 (2004) et 11.** Il faut WebView2 (présent sur Windows 11) pour l'overlay.
 
-> **Autres outils d'IA** (Claude Desktop, Claude Code, Antigravity…) : ce morph est un serveur MCP autonome. Installation sûre et réglages recommandés : [docs/INSTALL-AUTRES-OUTILS-IA.md](docs/INSTALL-AUTRES-OUTILS-IA.md).
+## Installer en une commande
+
+```powershell
+irm https://raw.githubusercontent.com/Locaryn/morph-desktop/main/install.ps1 | iex
+```
+
+Télécharge la dernière release, vérifie son empreinte SHA-256, l'installe sans droits administrateur et affiche le bloc MCP à coller dans Freebuff (`+ MCP`), Antigravity ou Claude. Détails et réglages de sécurité : [docs/INSTALL-AUTRES-OUTILS-IA.md](docs/INSTALL-AUTRES-OUTILS-IA.md).
+
 
 ## Ce que voit l'utilisateur
 

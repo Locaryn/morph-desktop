@@ -19,6 +19,28 @@ Ce qui limite le risque, dans l'ordre où cela compte :
 
 À ne pas faire : lancer le client « en administrateur » (le modèle hériterait de ces droits) ; laisser tourner une tâche sans surveillance ; garder ouverts pendant l'usage un gestionnaire de mots de passe, une banque en ligne ou une messagerie sensible ; supposer qu'un texte lu à l'écran est digne de confiance (une page web ou un document peut contenir des consignes destinées au modèle — le serveur le lui rappelle, mais aucun garde-fou n'est parfait).
 
+## Installation en une commande (Windows, PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/Locaryn/morph-desktop/main/install.ps1 | iex
+```
+
+Le script télécharge la dernière release, **vérifie son empreinte SHA-256**, l'installe dans `%LOCALAPPDATA%\Locaryn\morph-desktop` (aucun droit administrateur), crée des réglages prudents (commandes PowerShell désactivées), puis affiche — et copie dans le presse-papiers — le bloc MCP à coller :
+
+- **Freebuff** : `+ MCP`, collez le bloc.
+- **Antigravity** : menu des serveurs MCP → configuration brute → collez le bloc.
+- **Claude Desktop / Claude Code** : voir plus bas, ou laissez le script le faire.
+
+Pour que le script ajoute lui-même l'entrée à la configuration d'un outil (sauvegarde du fichier faite avant) :
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Locaryn/morph-desktop/main/install.ps1))) -Client antigravity
+```
+
+`-Client` accepte `claude`, `antigravity` ou `all`. Ajoutez `-AllowCommands` pour autoriser aussi les commandes PowerShell (déconseillé si votre outil a déjà son terminal). Vous pouvez lire le script avant de le lancer : <https://github.com/Locaryn/morph-desktop/blob/main/install.ps1>. Il n'écrit rien en dehors de son dossier sans `-Client`.
+
+Le reste de cette page détaille chaque étape, pour qui préfère tout faire à la main.
+
 ## 1. Télécharger et vérifier
 
 1. Téléchargez `morph-desktop-v<version>-windows-x86_64.zip` depuis la page des releases :
@@ -103,7 +125,7 @@ Ajoutez l'entrée à celles qui existent déjà, puis rechargez la liste des ser
 
 ### Freebuff
 
-La documentation de Freebuff (v0.0.115) ne mentionne pas de prise en charge de MCP, et je ne l'ai pas vérifiée. **Ne copiez pas la configuration ci-dessus au hasard** : consultez <https://codebuff.com/docs>. Si Freebuff ne sait pas lancer un serveur MCP, utilisez morph-desktop depuis Claude ou Antigravity à la place — n'inventez pas de réglage.
+Dans Freebuff : `+ MCP`, puis collez le bloc affiché par le script (ou la configuration JSON de Claude Desktop ci-dessus). Même forme, aucun autre réglage.
 
 ### Un autre client MCP
 
