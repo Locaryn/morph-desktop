@@ -197,6 +197,15 @@ struct Walk<'a> {
     cache: &'a mut HashMap<u32, UIElement>,
 }
 
+/// En dessous de ce compte, une lecture juste après un focus/lancement est
+/// suspecte : ce sont typiquement les seuls boutons Réduire/Agrandir/Fermer
+/// du cadre, le contenu de la fenêtre n'ayant pas encore attaché son arbre
+/// d'accessibilité. Éprouvé sur la calculatrice de Windows (WinUI3) : une
+/// lecture juste après la mise au premier plan ne rend que ces trois boutons,
+/// la même fenêtre en rend 36 une fois son contenu attaché.
+const SUSPICIOUSLY_EMPTY: usize = 5;
+const RETRY_DELAY: Duration = Duration::from_millis(500);
+
 fn snapshot(
     automation: &UIAutomation,
     hwnd: Option<i64>,
@@ -209,27 +218,42 @@ fn snapshot(
     let root = automation
         .element_from_handle(Handle::from(hwnd as isize))
         .map_err(|e| format!("Fenêtre illisible : {e}"))?;
-    let walker = automation
-        .get_control_view_walker()
-        .map_err(|e| format!("Parcours : {e}"))?;
-    let mut walk = Walk {
-        walker,
-        max_items: max,
-        started: Instant::now(),
-        nodes: 0,
-        items: Vec::new(),
-        text: String::new(),
-        cache,
+
+    let walk_once = |cache: &mut HashMap<u32, UIElement>| -> Result<Snapshot, String> {
+        cache.clear();
+        let walker = automation
+            .get_control_view_walker()
+            .map_err(|e| format!("Parcours : {e}"))?;
+        let mut walk = Walk {
+            walker,
+            max_items: max,
+            started: Instant::now(),
+            nodes: 0,
+            items: Vec::new(),
+            text: String::new(),
+            cache,
+        };
+        walk.visit(&root, 0);
+        let truncated = walk.nodes >= MAX_NODES
+            || walk.started.elapsed() >= TIME_BUDGET
+            || walk.items.len() >= max;
+        Ok(Snapshot {
+            window: root.get_name().unwrap_or_default(),
+            items: walk.items,
+            text: walk.text,
+            truncated,
+        })
     };
-    walk.visit(&root, 0);
-    let truncated =
-        walk.nodes >= MAX_NODES || walk.started.elapsed() >= TIME_BUDGET || walk.items.len() >= max;
-    Ok(Snapshot {
-        window: root.get_name().unwrap_or_default(),
-        items: walk.items,
-        text: walk.text,
-        truncated,
-    })
+
+    let first = walk_once(cache)?;
+    if first.items.len() >= SUSPICIOUSLY_EMPTY || first.truncated {
+        return Ok(first);
+    }
+    std::thread::sleep(RETRY_DELAY);
+    match walk_once(cache) {
+        Ok(second) if second.items.len() > first.items.len() => Ok(second),
+        _ => Ok(first),
+    }
 }
 
 impl Walk<'_> {
