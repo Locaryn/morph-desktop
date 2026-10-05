@@ -83,11 +83,17 @@ pub fn restore_cursors() {
     }
 }
 
-/// Cache une fenêtre aux captures d'écran : le modèle ne doit pas voir
-/// l'overlay, l'utilisateur si.
+/// Cache une fenêtre aux captures d'écran, sur demande seulement
+/// (`LOCARYN_OVERLAY_EXCLUDE_FROM_CAPTURE`).
+///
+/// C'était le comportement par défaut, et il rendait l'overlay blanc et opaque
+/// sur toute la surface de l'écran : `WDA_EXCLUDEFROMCAPTURE` casse la
+/// transparence du WebView2 sur certaines machines (constaté le 05/10/2026,
+/// Windows 11 et carte NVIDIA). L'utilisateur ne voyait plus rien. Le modèle ne
+/// voit pas l'overlay quand même : `desktop_screenshot` le voile le temps de
+/// la capture (`Command::Veil`).
 pub fn exclude_from_capture(hwnd: isize) {
-    // Réservé aux essais : voir l'overlay sur une capture.
-    if std::env::var_os("LOCARYN_OVERLAY_VISIBLE_IN_CAPTURE").is_some() {
+    if std::env::var_os("LOCARYN_OVERLAY_EXCLUDE_FROM_CAPTURE").is_none() {
         return;
     }
     // SAFETY: `hwnd` désigne une fenêtre de ce processus.

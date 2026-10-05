@@ -100,6 +100,17 @@ impl OverlayHost {
         }
     }
 
+    /// Voile l'overlay le temps d'une capture, pour que le modèle voie l'écran
+    /// sans lui. Rien à voiler s'il ne tourne pas : on ne le lance pas pour ça.
+    pub async fn veil(&self, on: bool) {
+        if self.live.lock().await.is_none() {
+            return;
+        }
+        if let Err(e) = self.send(&Command::Veil { on }).await {
+            eprintln!("overlay : voile impossible : {e}");
+        }
+    }
+
     pub async fn pulse(&self, kind: PulseKind, x: i32, y: i32) {
         if let Err(e) = self.send(&Command::Pulse { kind, x, y }).await {
             eprintln!("overlay : onde non affichée : {e}");

@@ -166,6 +166,17 @@ impl Laya {
         self.process.lock().await.is_some()
     }
 
+    /// Prêt à répondre tout de suite, sans attendre ? Faux pendant un
+    /// chargement — qui garde le verrou jusqu'à cinq minutes sans GPU libre —
+    /// comme pendant une autre question : l'appelant se passe alors de Laya
+    /// plutôt que de rester bloqué derrière lui.
+    pub fn is_ready_now(&self) -> bool {
+        self.process
+            .try_lock()
+            .map(|g| g.is_some())
+            .unwrap_or(false)
+    }
+
     /// Choisir le meilleur candidat pour `instruction`.
     pub async fn choose(
         &self,

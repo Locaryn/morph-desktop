@@ -254,6 +254,13 @@ fn run(
             }
             Msg::Cmd(Command::Thinking) => {}
             Msg::Cmd(Command::Pulse { kind, x, y }) => pulse(&screens, kind, x, y),
+            Msg::Cmd(Command::Veil { on }) => veil(
+                &screens,
+                &control,
+                on,
+                active.load(Ordering::Relaxed),
+                stopped,
+            ),
             Msg::Cursor(x, y) => move_cursor(&screens, x, y),
             Msg::HideIfIdle => {
                 if !active.load(Ordering::Relaxed) {
@@ -331,6 +338,17 @@ fn hide(screens: &[Screen], control: &Control, stopped: bool) {
     if !stopped {
         control.window.set_visible(false);
     }
+}
+
+/// Le voile d'une capture : tout disparaît d'un coup, puis revient tel qu'il
+/// était — le cadre seulement s'il était affiché, le bouton s'il l'était.
+fn veil(screens: &[Screen], control: &Control, on: bool, active: bool, stopped: bool) {
+    let cadre = !on && active;
+    let bouton = !on && (active || stopped);
+    for s in screens {
+        s.window.set_visible(cadre);
+    }
+    control.window.set_visible(bouton);
 }
 
 fn emergency_stop(screens: &[Screen], control: &Control, active: &AtomicBool, hard: bool) {

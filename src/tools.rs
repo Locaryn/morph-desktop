@@ -28,6 +28,9 @@ use tokio::sync::Mutex;
 const SHORTLIST: usize = 40;
 const SEUIL_CONFIANCE: f32 = 0.6;
 const CAPTURE_LARGEUR: u32 = 1568;
+/// Le temps que le compositeur retire l'overlay voilé de l'écran (deux images
+/// à 60 Hz, plus une marge) avant la capture.
+const VOILE_COMPOSITEUR: Duration = Duration::from_millis(80);
 /// Pause (bouton Pause, ou Ctrl+Alt+Échap) : réversible, la tâche reprendra.
 const PAUSED: &str = "L'utilisateur a mis le contrôle de l'ordinateur en pause (bouton « Pause », ou Ctrl+Alt+Échap). \
 Ce n'est pas un arrêt définitif : ne cherchez pas à le contourner, attendez qu'il clique sur « Reprendre » pour continuer la même tâche.";
@@ -225,10 +228,16 @@ impl Desktop {
             .as_u64()
             .map_or(CAPTURE_LARGEUR, |w| w.clamp(200, 4000) as u32);
         let dir = media_dir();
+        // L'overlay n'est plus exclu des captures (il en devenait opaque) : on
+        // le voile le temps d'une ou deux images du compositeur, puis il revient.
+        self.overlay.veil(true).await;
+        tokio::time::sleep(VOILE_COMPOSITEUR).await;
         let shot =
             tokio::task::spawn_blocking(move || screen::capture(display, region, width, &dir))
                 .await
-                .map_err(|e| format!("capture interrompue : {e}"))??;
+                .map_err(|e| format!("capture interrompue : {e}"));
+        self.overlay.veil(false).await;
+        let shot = shot??;
         Ok(json!({
             "path": shot.path, "width": shot.width, "height": shot.height, "display": shot.display,
             "image_scale": shot.image_scale, "origin": [shot.origin.0, shot.origin.1],
@@ -472,11 +481,19 @@ impl Desktop {
 
     /// Faut-il arrêter l'action pour demander confirmation ? Rend la réponse à
     /// donner au modèle si oui.
+    ///
+    /// Le repérage par mots (`extra`, les libellés dangereux) juge toujours.
+    /// Laya s'y ajoute quand il est prêt ; tant qu'il se charge, seule une
+    /// commande shell l'attend. Sans GPU libre — un modèle de chat l'occupe —
+    /// son chargement prend des minutes, et chaque touche ou clic restait
+    /// bloqué jusqu'à cinq minutes derrière lui.
     async fn confirm_gate(&self, args: &Value, action: &str, extra: &[&str]) -> Option<Value> {
         if !self.cfg.confirm_risky || args["confirmed"] == json!(true) {
             return None;
         }
-        let risk = assess(&self.laya, action, extra, self.cfg.laya_risk_check).await;
+        let shell = std::ptr::eq(extra, COMMANDES_A_RISQUE);
+        let use_laya = self.cfg.laya_risk_check && (shell || self.laya.is_ready_now());
+        let risk = assess(&self.laya, action, extra, use_laya).await;
         risk.risky().then(|| {
             json!({
                 "needs_confirmation": true,

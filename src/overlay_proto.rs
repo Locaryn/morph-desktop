@@ -20,6 +20,9 @@ pub enum Command {
     Thinking,
     /// Une onde de clic aux coordonnées écran (pixels physiques).
     Pulse { kind: PulseKind, x: i32, y: i32 },
+    /// Masquer (`on`) ou rendre l'overlay instantanément, sans fondu : le
+    /// temps d'une capture d'écran, pour que le modèle ne le voie pas.
+    Veil { on: bool },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
