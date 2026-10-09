@@ -47,7 +47,7 @@ Le reste de cette page détaille chaque étape, pour qui préfère tout faire à
    <https://github.com/Locaryn/morph-desktop/releases>. Ne le prenez pas ailleurs.
 2. Comparez son empreinte avec celle publiée dans `SHA256SUMS.txt`, sur la même page :
    ```powershell
-   (Get-FileHash .\morph-desktop-v0.1.0-beta.5-windows-x86_64.zip -Algorithm SHA256).Hash
+   (Get-FileHash .\morph-desktop-v0.1.0-beta.6-windows-x86_64.zip -Algorithm SHA256).Hash
    ```
    Les deux valeurs doivent être identiques. Sinon, n'installez rien.
 3. Extrayez l'archive dans un dossier **dont vous êtes propriétaire**, par exemple `C:\Users\<vous>\AppData\Local\Locaryn\morph-desktop\` (pas dans `Program Files`, pas dans un dossier partagé). Gardez `bin\locaryn-desktop-mcp.exe` et `bin\locaryn-desktop-overlay.exe` **ensemble** : le serveur lance l'overlay qui est à côté de lui.
