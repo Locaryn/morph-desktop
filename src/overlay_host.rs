@@ -1,13 +1,17 @@
 //! Côté serveur : lance l'overlay, lui parle, et retient l'arrêt d'urgence.
 //!
-//! L'arrêt reste en vigueur jusqu'à ce que **l'utilisateur** presse « reprendre »
-//! sur l'overlay : aucun outil ne permet au modèle de le lever.
+//! Deux arrêts. La **Pause** reste en vigueur jusqu'à ce que l'utilisateur
+//! presse « reprendre » sur l'overlay : aucun outil ne permet au modèle de la
+//! lever. L'**Arrêt** coupe tout sur-le-champ — overlay fermé, curseur rendu —
+//! et vaut pour la réponse en cours : l'hôte le lève en signalant la fin de la
+//! réponse (`desktop_task_done` avec `end_of_response`), et la demande
+//! suivante retrouve le contrôle sans rien avoir à réactiver.
 
 use crate::overlay_proto::{Command, Event, PulseKind};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command as Proc};
 use tokio::sync::{oneshot, Mutex};
@@ -23,6 +27,9 @@ const THINK_AFTER: Duration = Duration::from_secs(8);
 /// doit jamais faire disparaître puis réapparaître le cadre.
 const SAFETY_IDLE: Duration = Duration::from_secs(180);
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
+/// Filet si l'hôte ne signale jamais la fin de la réponse : un Arrêt tombe
+/// de lui-même après ce délai sans aucune tentative du modèle.
+const ARRET_OUBLIE: Duration = Duration::from_secs(600);
 
 struct Live {
     child: Child,
@@ -35,6 +42,8 @@ pub struct OverlayHost {
     /// `true` si le dernier arrêt est un Arrêt complet (bouton Arrêt), pas
     /// une simple Pause : change le message renvoyé au modèle.
     hard: Arc<AtomicBool>,
+    /// Dernier signe de la tâche arrêtée (l'Arrêt, puis chaque refus).
+    arret_vu: Arc<std::sync::Mutex<Option<Instant>>>,
     generation: AtomicU64,
 }
 
@@ -44,6 +53,7 @@ impl OverlayHost {
             live: Mutex::new(None),
             stopped: Arc::new(AtomicBool::new(false)),
             hard: Arc::new(AtomicBool::new(false)),
+            arret_vu: Arc::new(std::sync::Mutex::new(None)),
             generation: AtomicU64::new(0),
         })
     }
@@ -56,6 +66,51 @@ impl OverlayHost {
     /// Le dernier arrêt est-il un Arrêt complet plutôt qu'une Pause ?
     pub fn is_hard_stopped(&self) -> bool {
         self.hard.load(Ordering::Relaxed)
+    }
+
+    fn arret_vu(&self) -> std::sync::MutexGuard<'_, Option<Instant>> {
+        self.arret_vu.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Un outil tenté pendant un Arrêt : l'Arrêt tient-il encore ? Chaque
+    /// refus prolonge le filet ; passé `ARRET_OUBLIE` sans tentative, il tombe.
+    pub fn hard_stop_holds(&self) -> bool {
+        let mut vu = self.arret_vu();
+        match *vu {
+            Some(t) if t.elapsed() < ARRET_OUBLIE => {
+                *vu = Some(Instant::now());
+                true
+            }
+            _ => {
+                *vu = None;
+                drop(vu);
+                self.lift_hard_stop();
+                false
+            }
+        }
+    }
+
+    /// La réponse arrêtée est finie : le contrôle revient pour la suivante.
+    /// Une Pause, elle, attend toujours l'utilisateur.
+    pub fn lift_hard_stop(&self) {
+        if self.hard.swap(false, Ordering::SeqCst) {
+            self.stopped.store(false, Ordering::SeqCst);
+        }
+        *self.arret_vu() = None;
+    }
+
+    /// L'overlay tourne-t-il encore ? Après un Arrêt il se ferme de lui-même :
+    /// on oublie alors le processus, le prochain affichage en relance un.
+    async fn running(&self) -> bool {
+        let mut garde = self.live.lock().await;
+        let fini = match garde.as_mut() {
+            None => return false,
+            Some(live) => !matches!(live.child.try_wait(), Ok(None)),
+        };
+        if fini {
+            *garde = None;
+        }
+        !fini
     }
 
     /// Montre l'overlay avec l'action en cours. Il reste affiché — pas de
@@ -92,7 +147,7 @@ impl OverlayHost {
     /// jamais démarré ou est déjà éteint.
     pub async fn finish(&self) {
         self.generation.fetch_add(1, Ordering::SeqCst); // annule le filet de sécurité en attente
-        if self.live.lock().await.is_none() {
+        if !self.running().await {
             return;
         }
         if let Err(e) = self.send(&Command::Idle).await {
@@ -103,7 +158,7 @@ impl OverlayHost {
     /// Voile l'overlay le temps d'une capture, pour que le modèle voie l'écran
     /// sans lui. Rien à voiler s'il ne tourne pas : on ne le lance pas pour ça.
     pub async fn veil(&self, on: bool) {
-        if self.live.lock().await.is_none() {
+        if !self.running().await {
             return;
         }
         if let Err(e) = self.send(&Command::Veil { on }).await {
@@ -118,6 +173,7 @@ impl OverlayHost {
     }
 
     async fn send(&self, cmd: &Command) -> Result<(), String> {
+        self.running().await;
         let mut garde = self.live.lock().await;
         if garde.is_none() {
             *garde = Some(self.spawn().await?);
@@ -157,6 +213,7 @@ impl OverlayHost {
             BufReader::new(stdout),
             self.stopped.clone(),
             self.hard.clone(),
+            self.arret_vu.clone(),
             ready_tx,
         ));
         timeout(READY_TIMEOUT, ready_rx)
@@ -164,12 +221,10 @@ impl OverlayHost {
             .map_err(|_| "L'overlay n'a pas démarré à temps".to_string())?
             .map_err(|_| "L'overlay s'est arrêté au démarrage (WebView2 installé ?)".to_string())?;
         let mut live = Live { child, stdin };
-        if self.is_stopped() {
-            // Un overlay relancé après un arrêt doit encore proposer de reprendre,
-            // dans le même mode (pause ou arrêt complet) qu'avant sa disparition.
-            let halt = serde_json::to_string(&Command::Halt {
-                hard: self.is_hard_stopped(),
-            })
+        if self.is_stopped() && !self.is_hard_stopped() {
+            // Un overlay relancé pendant une Pause doit encore proposer de
+            // reprendre. Un Arrêt, lui, ne laisse rien à l'écran.
+            let halt = serde_json::to_string(&Command::Halt { hard: false })
             .map_err(|e| e.to_string())?
                 + "\n";
             live.stdin
@@ -193,6 +248,7 @@ async fn read_events(
     mut lines: BufReader<tokio::process::ChildStdout>,
     stopped: Arc<AtomicBool>,
     hard: Arc<AtomicBool>,
+    arret_vu: Arc<std::sync::Mutex<Option<Instant>>>,
     ready: oneshot::Sender<()>,
 ) {
     let mut ready = Some(ready);
@@ -214,6 +270,9 @@ async fn read_events(
             Ok(Event::Stop { hard: h }) => {
                 stopped.store(true, Ordering::SeqCst);
                 hard.store(h, Ordering::SeqCst);
+                if h {
+                    *arret_vu.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+                }
             }
             Ok(Event::Resume) => {
                 stopped.store(false, Ordering::SeqCst);

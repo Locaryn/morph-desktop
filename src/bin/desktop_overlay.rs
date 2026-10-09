@@ -244,10 +244,12 @@ fn run(
                 show(&screens, &control, &label, &active);
             }
             Msg::Cmd(Command::Active { .. }) => {}
-            Msg::Cmd(Command::Halt { hard }) => {
+            Msg::Cmd(Command::Halt { hard: false }) => {
                 stopped = true;
-                halt(&screens, &control, &active, hard);
+                halt(&screens, &control, &active, false);
             }
+            // Un Arrêt ne se rejoue pas : il ne laisse rien à l'écran.
+            Msg::Cmd(Command::Halt { hard: true }) => {}
             Msg::Cmd(Command::Idle) => fade_out(&screens, &active, &proxy, stopped),
             Msg::Cmd(Command::Thinking) if !stopped && active.load(Ordering::Relaxed) => {
                 think(&screens);
@@ -267,9 +269,16 @@ fn run(
                     hide(&screens, &control, stopped);
                 }
             }
-            Msg::Halt(hard) if !stopped && active.load(Ordering::Relaxed) => {
+            // Arrêt : bouton d'urgence. Plus de cadre, plus de bouton, le
+            // curseur rendu, et l'overlay se ferme — rien ne propose de
+            // reprendre. La demande suivante en relancera un neuf.
+            Msg::Halt(true) if stopped || active.load(Ordering::Relaxed) => {
+                kill_switch(&screens, &control, &active);
+                *flow = ControlFlow::Exit;
+            }
+            Msg::Halt(false) if !stopped && active.load(Ordering::Relaxed) => {
                 stopped = true;
-                emergency_stop(&screens, &control, &active, hard);
+                emergency_stop(&screens, &control, &active, false);
             }
             Msg::Halt(_) => {}
             Msg::Resume => {
@@ -354,6 +363,16 @@ fn veil(screens: &[Screen], control: &Control, on: bool, active: bool, stopped: 
 fn emergency_stop(screens: &[Screen], control: &Control, active: &AtomicBool, hard: bool) {
     halt(screens, control, active, hard);
     emit(&Out::Stop { hard });
+}
+
+fn kill_switch(screens: &[Screen], control: &Control, active: &AtomicBool) {
+    active.store(false, Ordering::Relaxed);
+    sys::restore_cursors();
+    for s in screens {
+        s.window.set_visible(false);
+    }
+    control.window.set_visible(false);
+    emit(&Out::Stop { hard: true });
 }
 
 fn halt(screens: &[Screen], control: &Control, active: &AtomicBool, hard: bool) {

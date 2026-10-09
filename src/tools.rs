@@ -37,8 +37,8 @@ Ce n'est pas un arrêt définitif : ne cherchez pas à le contourner, attendez q
 
 /// Arrêt (bouton Arrêt) : l'utilisateur ne veut plus que cette tâche continue.
 const HARD_STOPPED: &str = "L'utilisateur a arrêté complètement le contrôle de l'ordinateur (bouton « Arrêt »), pas seulement mis en pause. \
-Ne réessayez pas et ne cherchez pas à reprendre cette tâche : proposez-lui une autre façon de faire, ou attendez de nouvelles instructions. \
-Le contrôle ne reviendra que si l'utilisateur le réactive lui-même.";
+Ne réessayez pas et ne cherchez pas à reprendre cette tâche : arrêtez-vous là, dites ce qui a été fait, et attendez de nouvelles instructions. \
+Le contrôle reviendra à sa prochaine demande.";
 
 /// Raccourcis qui ferment, déconnectent ou effacent.
 const TOUCHES_A_RISQUE: &[&str] = &[
@@ -117,15 +117,20 @@ impl Desktop {
             // Un nettoyage, pas une nouvelle action : on ne le bloque pas
             // derrière un arrêt d'urgence, et il ne rouvre jamais l'overlay.
             self.overlay.finish().await;
+            // Seul l'hôte, en fin de réponse, lève un Arrêt : le modèle arrêté
+            // ne doit pas pouvoir se rendre la main en se déclarant fini.
+            if args.get("end_of_response").and_then(Value::as_bool) == Some(true) {
+                self.overlay.lift_hard_stop();
+            }
             return Ok(json!({ "done": true }));
         }
         if self.overlay.is_stopped() {
-            let msg = if self.overlay.is_hard_stopped() {
-                HARD_STOPPED
-            } else {
-                PAUSED
-            };
-            return Err(msg.into());
+            if !self.overlay.is_hard_stopped() {
+                return Err(PAUSED.into());
+            }
+            if self.overlay.hard_stop_holds() {
+                return Err(HARD_STOPPED.into());
+            }
         }
         self.warm_up();
         self.begin(name).await?;
@@ -195,7 +200,7 @@ impl Desktop {
             "stopped_by_user": stopped,
             "stop_kind": stopped.then(|| if self.overlay.is_hard_stopped() { "hard" } else { "paused" }),
             "controls": "Pause et Arrêt à l'écran ; Ctrl+Alt+Échap vaut Pause",
-            "resume": "seul l'utilisateur peut reprendre (bouton sur l'overlay)",
+            "resume": "une pause se lève par l'utilisateur (bouton sur l'overlay) ; un arrêt vaut jusqu'à la fin de la réponse",
             "laya": {
                 "loaded": self.laya.is_running().await,
                 "last_error": self.laya.last_error().await,
