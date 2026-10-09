@@ -225,7 +225,7 @@ impl OverlayHost {
             // Un overlay relancé pendant une Pause doit encore proposer de
             // reprendre. Un Arrêt, lui, ne laisse rien à l'écran.
             let halt = serde_json::to_string(&Command::Halt { hard: false })
-            .map_err(|e| e.to_string())?
+                .map_err(|e| e.to_string())?
                 + "\n";
             live.stdin
                 .write_all(halt.as_bytes())
@@ -291,5 +291,47 @@ fn overlay_path() -> Result<PathBuf, String> {
         Ok(exe)
     } else {
         Err(format!("Overlay introuvable : {}", exe.display()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn arreter(host: &OverlayHost, hard: bool) {
+        host.stopped.store(true, Ordering::SeqCst);
+        host.hard.store(hard, Ordering::SeqCst);
+        if hard {
+            *host.arret_vu() = Some(Instant::now());
+        }
+    }
+
+    #[test]
+    fn un_arret_tient_jusqu_a_la_fin_de_la_reponse() {
+        let host = OverlayHost::new();
+        arreter(&host, true);
+        assert!(host.hard_stop_holds(), "refusé pendant la réponse arrêtée");
+        host.lift_hard_stop();
+        assert!(
+            !host.is_stopped(),
+            "la demande suivante retrouve le contrôle"
+        );
+    }
+
+    #[test]
+    fn un_arret_oublie_tombe_de_lui_meme() {
+        let host = OverlayHost::new();
+        arreter(&host, true);
+        *host.arret_vu() = Instant::now().checked_sub(ARRET_OUBLIE + Duration::from_secs(1));
+        assert!(!host.hard_stop_holds());
+        assert!(!host.is_stopped());
+    }
+
+    #[test]
+    fn la_fin_de_reponse_ne_leve_pas_une_pause() {
+        let host = OverlayHost::new();
+        arreter(&host, false);
+        host.lift_hard_stop();
+        assert!(host.is_stopped(), "seul l'utilisateur lève une pause");
     }
 }
