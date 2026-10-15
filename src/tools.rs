@@ -201,8 +201,10 @@ impl Desktop {
             "stop_kind": stopped.then(|| if self.overlay.is_hard_stopped() { "hard" } else { "paused" }),
             "controls": "Pause et Arrêt à l'écran ; Ctrl+Alt+Échap vaut Pause",
             "resume": "une pause se lève par l'utilisateur (bouton sur l'overlay) ; un arrêt vaut jusqu'à la fin de la réponse",
-            "laya": {
-                "loaded": self.laya.is_running().await,
+            // Le modèle de décision local reste un détail interne : le
+            // modèle de conversation n'a pas à le nommer à l'utilisateur.
+            "decisions": {
+                "ready": self.laya.is_running().await,
                 "last_error": self.laya.last_error().await,
             },
             "settings": {
@@ -503,7 +505,7 @@ impl Desktop {
             json!({
                 "needs_confirmation": true,
                 "action": action,
-                "risk": { "lexical": risk.lexical, "laya": risk.laya },
+                "risk": { "lexical": risk.lexical, "estimate": risk.laya },
                 "next": "Action non exécutée. Décrivez-la à l'utilisateur et demandez son accord ; \
                          s'il accepte, rappelez l'outil avec confirmed=true."
             })
@@ -528,7 +530,7 @@ impl Desktop {
                 &format!("L'objectif « {goal} » est-il atteint dans cette fenêtre ?"),
             )
             .await
-            .map_err(|e| format!("Laya indisponible, impossible d'estimer : {e}"))?;
+            .map_err(|e| format!("Estimation locale indisponible : {e}"))?;
         Ok(json!({
             "probability": p, "reached": p >= 0.5,
             "note": "Estimation sur les textes de la fenêtre ; vérifiez par une capture si l'enjeu est important.",
@@ -541,8 +543,8 @@ impl Desktop {
         extra.extend_from_slice(COMMANDES_A_RISQUE);
         let risk = assess(&self.laya, &action, &extra, true).await;
         Ok(json!({
-            "risky": risk.risky(), "lexical": risk.lexical, "laya_probability": risk.laya,
-            "laya_error": if risk.laya.is_none() { self.laya.last_error().await } else { None },
+            "risky": risk.risky(), "lexical": risk.lexical, "probability": risk.laya,
+            "estimate_error": if risk.laya.is_none() { self.laya.last_error().await } else { None },
         }))
     }
 }
@@ -722,12 +724,12 @@ fn xy_props() -> Value {
 
 fn screen_tools() -> Vec<Value> {
     vec![
-        tool("desktop_status", "État du contrôle de l'ordinateur : arrêt d'urgence pressé ou non, Laya, réglages. À appeler si un outil répond que l'utilisateur a pressé Stop.", json!({}), &[]),
+        tool("desktop_status", "État du contrôle de l'ordinateur : arrêt d'urgence pressé ou non, réglages. À appeler si un outil répond que l'utilisateur a pressé Stop.", json!({}), &[]),
         tool("desktop_task_done", "Signale que la tâche de contrôle de l'ordinateur est terminée : l'overlay (cadre, curseur) disparaît de l'écran tout de suite. L'overlay reste sinon affiché sans interruption tant que d'autres outils desktop_* sont utilisés, même avec un temps de réflexion entre deux appels — à appeler dès que vous avez fini, pas après chaque action.", json!({}), &[]),
         tool("desktop_screen_info", "Écrans (position, taille, échelle), position du curseur et fenêtre au premier plan.", json!({}), &[]),
         tool("desktop_screenshot", "Capture un écran ou une zone dans un fichier PNG. Rend le chemin et l'échelle pour convertir un pixel de l'image en coordonnée écran.", json!({ "monitor": { "type": "integer" }, "region": { "type": "object", "properties": { "x": {"type": "integer"}, "y": {"type": "integer"}, "width": {"type": "integer"}, "height": {"type": "integer"} } }, "max_width": { "type": "integer" } }), &[]),
         tool("desktop_list_windows", "Liste les fenêtres ouvertes (titre, application, position). `query` filtre.", json!({ "query": str_prop("Filtre sur le titre ou l'application") }), &[]),
-        tool("desktop_find_window", "Retrouve la fenêtre qui correspond à une description. Décidé par Laya.", json!({ "description": str_prop("Ce que la fenêtre montre") }), &["description"]),
+        tool("desktop_find_window", "Retrouve la fenêtre qui correspond à une description.", json!({ "description": str_prop("Ce que la fenêtre montre") }), &["description"]),
         tool("desktop_focus_window", "Met une fenêtre au premier plan (la restaure si réduite).", json!({ "hwnd": hwnd_prop() }), &["hwnd"]),
         tool("desktop_window_action", "Réduit, agrandit, restaure ou ferme une fenêtre. Fermer demande confirmation.", json!({ "hwnd": hwnd_prop(), "action": { "type": "string", "enum": ["minimize", "maximize", "restore", "close"] }, "confirmed": confirmed_prop() }), &["hwnd", "action"]),
         tool("desktop_launch", "Ouvre une application, un document, un dossier ou une adresse (`notepad`, `calc`, `C:\\\\docs\\\\a.pdf`, `https://…`).", json!({ "target": str_prop("Nom, chemin ou adresse"), "args": str_prop("Arguments éventuels") }), &["target"]),
@@ -737,10 +739,10 @@ fn screen_tools() -> Vec<Value> {
 fn ui_tools() -> Vec<Value> {
     vec![
         tool("desktop_ui_tree", "Lit une fenêtre par l'accessibilité : éléments interactifs numérotés (id, type, nom, position) et textes. Bien plus fiable et léger qu'une capture quand l'application l'expose.", json!({ "hwnd": hwnd_prop(), "max_elements": { "type": "integer" } }), &[]),
-        tool("desktop_find_element", "Trouve l'élément de la fenêtre qui sert un objectif (« enregistrer », « barre de recherche »). Laya départage ; rend le meilleur, sa confiance, des alternatives.", json!({ "hwnd": hwnd_prop(), "goal": str_prop("Ce qu'on veut faire") }), &["goal"]),
+        tool("desktop_find_element", "Trouve l'élément de la fenêtre qui sert un objectif (« enregistrer », « barre de recherche »). Rend le meilleur, sa confiance, des alternatives.", json!({ "hwnd": hwnd_prop(), "goal": str_prop("Ce qu'on veut faire") }), &["goal"]),
         tool("desktop_invoke", "Active un élément par accessibilité (sans déplacer la souris). Actions irréversibles : confirmation demandée.", json!({ "element_id": { "type": "integer" }, "confirmed": confirmed_prop() }), &["element_id"]),
         tool("desktop_set_value", "Remplace la valeur d'un champ par accessibilité.", json!({ "element_id": { "type": "integer" }, "text": str_prop("Nouvelle valeur") }), &["element_id", "text"]),
-        tool("desktop_goal_reached", "Estime, par Laya, si l'objectif est atteint d'après les textes de la fenêtre. Une probabilité, pas une preuve.", json!({ "hwnd": hwnd_prop(), "goal": str_prop("L'objectif à vérifier") }), &["goal"]),
+        tool("desktop_goal_reached", "Estime si l'objectif est atteint d'après les textes de la fenêtre. Une probabilité, pas une preuve.", json!({ "hwnd": hwnd_prop(), "goal": str_prop("L'objectif à vérifier") }), &["goal"]),
         tool("desktop_assess_action", "Juge, avant d'agir, si une action (clic, raccourci, commande) est irréversible ou lourde de conséquences.", json!({ "action": str_prop("L'action envisagée") }), &["action"]),
     ]
 }

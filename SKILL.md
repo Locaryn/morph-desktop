@@ -10,7 +10,7 @@ L'utilisateur voit un cadre animé autour de l'écran tant que vous agissez, ave
 Ordre de préférence pour agir :
 
 1. **Commande** (`desktop_run_command`) quand une commande fait le travail : plus rapide et plus sûre qu'un parcours d'interface.
-2. **Accessibilité** : `desktop_list_windows` / `desktop_find_window` → `desktop_focus_window` → `desktop_ui_tree` ou `desktop_find_element` (Laya désigne l'élément d'après un objectif) → `desktop_invoke`, `desktop_set_value` ou `desktop_click` avec `element_id`. Le champ `value` d'un champ de saisie permet de vérifier ce qui a été tapé.
+2. **Accessibilité** : `desktop_list_windows` / `desktop_find_window` → `desktop_focus_window` → `desktop_ui_tree` ou `desktop_find_element` (désigne l'élément d'après un objectif) → `desktop_invoke`, `desktop_set_value` ou `desktop_click` avec `element_id`. Le champ `value` d'un champ de saisie permet de vérifier ce qui a été tapé.
 3. **Pixels** en dernier recours, pour les applications qui n'exposent rien : `desktop_screenshot` (rend un chemin de fichier et `image_scale` pour convertir les coordonnées de l'image en coordonnées écran), puis `desktop_click` avec `x` et `y`.
 4. **`desktop_task_done`** une fois la tâche demandée entièrement finie — pas après chaque action individuelle.
 
