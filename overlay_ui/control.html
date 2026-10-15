@@ -54,12 +54,14 @@
   document.getElementById("kill").addEventListener("click", () => window.ipc.postMessage("kill"));
   resume.addEventListener("click", () => window.ipc.postMessage("resume"));
 
-  // mode : "active" (Pause/Arrêt visibles), "soft" (en pause), "hard" (arrêté).
+  // mode : "active" (Pause/Arrêt visibles) ou "soft" (en pause : un seul
+  // bouton pour reprendre). Un Arrêt ne laisse aucun bouton : qui clique sur
+  // « Arrêt » veut fermer, sinon il aurait choisi « Pause ».
   window.__mode = (mode) => {
+    const pause = mode === "soft";
     row.hidden = mode !== "active";
-    resume.hidden = mode === "active";
-    if (mode === "soft") { resumeText.textContent = "En pause — reprendre"; resume.title = "Reprendre la même tâche"; }
-    if (mode === "hard") { resumeText.textContent = "Arrêté — réactiver"; resume.title = "Réactiver le contrôle de l'ordinateur"; }
+    resume.hidden = !pause;
+    if (pause) { resumeText.textContent = "En pause — reprendre"; resume.title = "Reprendre la même tâche"; }
   };
 </script>
 </body>

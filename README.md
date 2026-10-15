@@ -30,9 +30,9 @@ L'overlay est **invisible pour le modèle** : il est exclu des captures d'écran
 Les deux coupent le contrôle à l'instant (tous les outils refusent d'agir, le curseur est rendu au système), mais avec un sens différent pour le modèle :
 
 - **Pause** (ou Ctrl+Alt+Échap) : réversible. Utile pour reprendre la main un instant sans faire perdre le fil de la tâche en cours — le bouton devient « En pause — reprendre » et la même tâche continue au clic.
-- **Arrêt** : définitif pour la tâche en cours. Utile pour couper court franchement — par exemple si le modèle n'avait pas besoin de contrôler l'ordinateur pour ce qu'on lui demandait, ou s'il se trompe. Le bouton devient « Arrêté — réactiver » ; le modèle reçoit un message différent lui disant de ne pas réessayer cette tâche et de proposer autre chose.
+- **Arrêt** : définitif pour la tâche en cours. Utile pour couper court franchement — par exemple si le modèle n'avait pas besoin de contrôler l'ordinateur pour ce qu'on lui demandait, ou s'il se trompe. Le cadre et les boutons disparaissent aussitôt et le curseur est rendu : rien ne propose de reprendre — qui voulait reprendre aurait choisi Pause. Le modèle reçoit un message différent lui disant de ne pas réessayer cette tâche et de proposer autre chose ; l'arrêt vaut jusqu'à la fin de la réponse, la demande suivante repart de zéro.
 
-Dans les deux cas, **seul l'utilisateur peut reprendre** (aucun outil ne lève l'un ou l'autre), et `desktop_status` indique lequel est actif (`stop_kind: "paused"` ou `"hard"`).
+Aucun outil ne lève une pause à la place de l'utilisateur, et `desktop_status` indique l'état (`stop_kind: "paused"` ou `"hard"`).
 
 Si l'overlay ne peut pas s'afficher, le morph **refuse d'agir** (réglage `require_overlay`). Si le serveur s'arrête brutalement, l'overlay rend de lui-même le curseur au système.
 

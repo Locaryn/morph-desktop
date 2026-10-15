@@ -246,7 +246,7 @@ fn run(
             Msg::Cmd(Command::Active { .. }) => {}
             Msg::Cmd(Command::Halt { hard: false }) => {
                 stopped = true;
-                halt(&screens, &control, &active, false);
+                halt(&screens, &control, &active);
             }
             // Un Arrêt ne se rejoue pas : il ne laisse rien à l'écran.
             Msg::Cmd(Command::Halt { hard: true }) => {}
@@ -272,13 +272,15 @@ fn run(
             // Arrêt : bouton d'urgence. Plus de cadre, plus de bouton, le
             // curseur rendu, et l'overlay se ferme — rien ne propose de
             // reprendre. La demande suivante en relancera un neuf.
-            Msg::Halt(true) if stopped || active.load(Ordering::Relaxed) => {
+            // Quel que soit l'état (en action, en réflexion, en pause) : un
+            // Arrêt ignoré laissait le bouton à l'écran.
+            Msg::Halt(true) => {
                 kill_switch(&screens, &control, &active);
                 *flow = ControlFlow::Exit;
             }
             Msg::Halt(false) if !stopped && active.load(Ordering::Relaxed) => {
                 stopped = true;
-                emergency_stop(&screens, &control, &active, false);
+                pause(&screens, &control, &active);
             }
             Msg::Halt(_) => {}
             Msg::Resume => {
@@ -360,9 +362,9 @@ fn veil(screens: &[Screen], control: &Control, on: bool, active: bool, stopped: 
     control.window.set_visible(bouton);
 }
 
-fn emergency_stop(screens: &[Screen], control: &Control, active: &AtomicBool, hard: bool) {
-    halt(screens, control, active, hard);
-    emit(&Out::Stop { hard });
+fn pause(screens: &[Screen], control: &Control, active: &AtomicBool) {
+    halt(screens, control, active);
+    emit(&Out::Stop { hard: false });
 }
 
 fn kill_switch(screens: &[Screen], control: &Control, active: &AtomicBool) {
@@ -375,17 +377,15 @@ fn kill_switch(screens: &[Screen], control: &Control, active: &AtomicBool) {
     emit(&Out::Stop { hard: true });
 }
 
-fn halt(screens: &[Screen], control: &Control, active: &AtomicBool, hard: bool) {
+/// La pause : plus de cadre, le curseur rendu, un seul bouton pour reprendre.
+fn halt(screens: &[Screen], control: &Control, active: &AtomicBool) {
     active.store(false, Ordering::Relaxed);
     sys::restore_cursors();
     for s in screens {
         run_js(&s.view, "window.__idle()");
         s.window.set_visible(false);
     }
-    run_js(
-        &control.view,
-        &format!("window.__mode('{}')", if hard { "hard" } else { "soft" }),
-    );
+    run_js(&control.view, "window.__mode('soft')");
     control.window.set_visible(true);
 }
 
